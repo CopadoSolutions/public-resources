@@ -1,0 +1,156 @@
+// script version of metadatahandler
+// this mark as invalid matching Metadata_Type__c and Node__c and Field__c
+Map<String, Map<String, List<String>>> FIELDS_TO_DEPRECATE_V2 = new Map<String, Map<String, List<String>>>{
+    'Profile' => new Map<String, List<String>>{
+        'fieldPermissions' => new List<String>{
+            'hidden'
+        }
+    },
+    'CustomObject' => new Map<String, List<String>>{
+        'businessProcesses' => new List<String>{
+            'namespacePrefix'
+        },
+        'fields' => new List<String>{
+            'globalPicklist',
+            'indexed',
+            'lookupFilter.filterItems',
+            'trueValueIndexed'
+        },
+        'webLinks' => new List<String>{
+            'value'
+        }
+    },
+    'Network' => new Map<String, List<String>>{
+        'navigationLinkSet' => new List<String>{
+            'navigationMenuItem.subMenu'
+        },
+        'reputationLevels' => new List<String>{
+            'level.branding'
+        }
+    },
+    'SharingRules' => new Map<String, List<String>>{
+        'sharingCriteriaRules' => new List<String>{
+            'sharedFrom.allCustomerPortalUsers',
+            'sharedFrom.allInternalUsers',
+            'sharedFrom.allPartnerUsers',
+            'sharedFrom.channelProgramGroup',
+            'sharedFrom.channelProgramGroups',
+            'sharedFrom.group',
+            'sharedFrom.groups',
+            'sharedFrom.managerSubordinates',
+            'sharedFrom.managers',
+            'sharedFrom.portalRole',
+            'sharedFrom.portalRoleandSubordinates',
+            'sharedFrom.role',
+            'sharedFrom.roleAndSubordinates',
+            'sharedFrom.roleAndSubordinatesInternal',
+            'sharedFrom.roles',
+            'sharedFrom.rolesAndSubordinates',
+            'sharedFrom.territories',
+            'sharedFrom.territoriesAndSubordinates',
+            'sharedFrom.territory',
+            'sharedFrom.territoryAndSubordinates',
+            'sharedFrom.queue'
+        }
+    },
+    'AddressSettings' => new Map<String, List<String>>{
+        'countriesAndStates' => new List<String>{
+            'active',
+            'integrationValue',
+            'isoCode',
+            'label',
+            'orgDefault',
+            'standard',
+            'visible'
+        }
+    },
+    'IdeasSettings' => new Map<String, List<String>>{
+        'cases' => new List<String>{
+            'articlePublicSharingCommunities.site'
+        }
+    }
+};
+// this change Field_Type__c matching Metadata_Type__c and Node__c and Field__c 
+Map<String, Map<String, Map<String, String>>> FIELDS_TO_CHANGE_TYPE_V2 = new Map<String, Map<String, Map<String, String>>>{
+    'CustomObject' => new Map<String, Map<String, String>>{
+        'webLinks' => new Map<String, String>{
+            'height' => 'INT',
+            'width' => 'INT'
+        }
+    },
+    'Network' => new Map<String, Map<String, String>>{
+        'lockoutTemplate' => new Map<String, String>{
+            'value' => 'STRING'
+        },
+        'level' => new Map<String, String>{
+            'lowerTreshold' => 'DOUBLE'
+        }
+    },
+    'ForecastingSettings' => new Map<String, Map<String, String>>{
+        'forecastingCategoryMappings' => new Map<String, String>{
+            'weightedSourceCategories.weight' => 'DOUBLE'
+        }
+    },
+    'IdeasSettings' => new Map<String, Map<String, String>>{
+        'halfLife' => new Map<String, String>{
+            'value' => 'DOUBLE'
+        }
+    }
+};
+
+List<Copado__Compliance_Rule_Criteria__c> updatedCriterias = new List<Copado__Compliance_Rule_Criteria__c>();
+List<Copado__Compliance_Rule__c> updatedRules = new List<Copado__Compliance_Rule__c>();
+
+// deprecated (v2) (Field__c)
+// search rules by Metadata_Type__c and check if the Field__c that needs to be deprecated
+void deprecateField(Copado__Compliance_Rule_Criteria__c criteria){
+    String metadataType = criteria.Copado__Compliance_Rule__r.Copado__Metadata_Type__c;
+    if(FIELDS_TO_DEPRECATE_V2.containsKey(metadataType)){
+        Map<String, List<String>> deprecatedNodes = FIELDS_TO_DEPRECATE_V2.get(metadataType);
+        if(deprecatedNodes.containsKey(criteria.Copado__Node__c)){
+            List<String> deprecatedFields = deprecatedNodes.get(criteria.Copado__Node__c);
+            if(deprecatedFields.contains(criteria.Copado__Field__c)){
+                // mark rule as invalid
+                Copado__Compliance_Rule__c updatedRule = new Copado__Compliance_Rule__c(
+                    Id = criteria.Copado__Compliance_Rule__c,
+                    Copado__Is_Valid__c = false
+                );
+                updatedRules.add(updatedRule);
+            }
+        }
+    }
+}
+
+// fix type
+// search rules by Metadata_Type__c and check if the Field_Type__c that needs to be replaced
+void replaceFieldType(Copado__Compliance_Rule_Criteria__c criteria){
+    String metadataType = criteria.Copado__Compliance_Rule__r.Copado__Metadata_Type__c;
+    if(FIELDS_TO_CHANGE_TYPE_V2.containsKey(metadataType)){
+        Map<String, Map<String, String>> nodeMapping = FIELDS_TO_CHANGE_TYPE_V2.get(metadataType);
+        if(nodeMapping.containsKey(criteria.Copado__Node__c)){
+            Map<String, String> fieldTypeMapping = nodeMapping.get(criteria.Copado__Node__c);
+            if(fieldTypeMapping.containsKey(criteria.Copado__Field__c)){
+                String newFieldType = fieldTypeMapping.get(criteria.Copado__Field__c);
+                // change field type
+                Copado__Compliance_Rule_Criteria__c updatedCriteria = new Copado__Compliance_Rule_Criteria__c(
+                    Id = criteria.Id,
+                    Copado__Field_Type__c = newFieldType
+                );
+                updatedCriterias.add(updatedCriteria);
+            }
+        }
+    }
+}
+
+// perform v2 changes
+void applyChangesV2(){
+    for(Copado__Compliance_Rule_Criteria__c criteria : [SELECT Id, Copado__Criteria__c, Copado__Field__c, Copado__Node__c, Copado__Compliance_Rule__c, Copado__Compliance_Rule__r.Copado__Metadata_Type__c FROM Copado__Compliance_Rule_Criteria__c]){
+        deprecateField(criteria);
+        replaceFieldType(criteria);
+    }
+    update updatedCriterias;
+    update updatedRules;
+}
+
+// call
+applyChangesV2();
