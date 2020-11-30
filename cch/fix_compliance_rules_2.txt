@@ -1,0 +1,108 @@
+// script version of metadatahandler
+String DEFAULT_FIELD_VALUE = 'default';
+String DEFAULT_FIELD_VALUE2 = '_default';
+String PROTECTED_FIELD_VALUE = 'protected';
+String PROTECTED_FIELD_VALUE2 = '_protected';
+
+// this replaces Field__c with the corresponding value matching Metadata_Type__c, Node__c and Field__c
+Map<String, Map<String, Map<String, String>>> FIELDS_TO_REPLACE_V2 = new Map<String, Map<String, Map<String, String>>>{
+    'Profile' => new Map<String, Map<String, String>>{
+        'applicationVisibilities' => new Map<String, String>{
+            DEFAULT_FIELD_VALUE => DEFAULT_FIELD_VALUE2
+        },
+        'recordTypeVisibilities' => new Map<String, String>{
+            DEFAULT_FIELD_VALUE => DEFAULT_FIELD_VALUE2
+        }
+    },
+    'CustomObject' => new Map<String, Map<String, String>>{
+        'businessProcesses' => new Map<String, String>{
+            'values.'+DEFAULT_FIELD_VALUE => 'values._default'
+        },
+        'fields' => new Map<String, String>{
+            'formulaTreatBlankAs' => 'formulaTreatBlanksAs',
+            'metadataRelationshipZWSPControllingField' => 'metadataRelationshipControllingField'
+        },
+        'webLinks' => new Map<String, String>{
+            PROTECTED_FIELD_VALUE => PROTECTED_FIELD_VALUE2
+        }
+    },
+    'Network' => new Map<String, Map<String, String>>{
+        'networkPageOverrides' => new Map<String, String>{
+            'forgotPasswordOverrideSetting' => 'forgotPasswordPageOverrideSetting'
+        }
+    },
+    'SharingRules' => new Map<String, Map<String, String>>{
+        'sharingCriteriaRules' => new Map<String, String>{
+            'sharedTo.portalRoleandSubordinates' => 'sharedTo.portalRoleAndSubordinates'
+        },
+        'sharingOwnerRules' => new Map<String, String>{
+            'sharedTo.portalRoleandSubordinates' => 'sharedTo.portalRoleAndSubordinates',
+            'sharedFrom.portalRoleandSubordinates' => 'sharedFrom.portalRoleAndSubordinates'
+        }
+    },
+    'AddressSettings' => new Map<String, Map<String, String>>{
+        'countriesAndStates' => new Map<String, String>{
+            'states.active' => 'countries.states.active',
+            'states.integrationValue' => 'countries.states.integrationValue',
+            'states.isoCode' => 'countries.states.isoCode',
+            'states.label' => 'countries.states.label',
+            'states.standard' => 'countries.states.standard',
+            'states.visible' => 'countries.states.visible'
+        }
+    },
+    'CaseSettings' => new Map<String, Map<String, String>>{
+        'emailToCase' => new Map<String, String>{
+            'routingAddresses.authorizeSenders' => 'routingAddresses.authorizedSenders',
+            'routingAddresses.emailServiceAddress' => 'routingAddresses.emailServicesAddress'
+        }
+    },
+    'ForecastingSettings' => new Map<String, Map<String, String>>{
+        'forecastingTypeSettings' => new Map<String, String>{
+            'ForecastingDateType' => 'forecastingDateType'
+        }
+    },
+    'IdeasSettings' => new Map<String, Map<String, String>>{
+        'suggestedArticles' => new Map<String, String>{
+            'caseFields.field' => 'caseFields.field.name',
+            'workOrderFields.field' => 'caseFields.workOrderFields.field.name'
+        }
+    }
+};
+
+List<Copado__Compliance_Rule_Criteria__c> updatedCriterias = new List<Copado__Compliance_Rule_Criteria__c>();
+List<Copado__Compliance_Rule__c> updatedRules = new List<Copado__Compliance_Rule__c>();
+
+// fix replacements (Field__c)
+// search rules by Metadata_Type__c and check if the Field__c that needs to be replaced
+void replaceField(Copado__Compliance_Rule_Criteria__c criteria){
+    String metadataType = criteria.Copado__Compliance_Rule__r.Copado__Metadata_Type__c;
+    if(FIELDS_TO_REPLACE_V2.containsKey(metadataType)){
+        Map<String, Map<String,String>> replacements = FIELDS_TO_REPLACE_V2.get(metadataType);
+        if(replacements.containsKey(criteria.Copado__Node__c)){
+            Map<String,String> fieldReplacement = replacements.get(criteria.Copado__Node__c);
+            if(fieldReplacement.containsKey(criteria.Copado__Field__c)){
+                String newField = fieldReplacement.get(criteria.Copado__Field__c);
+                String newCriteria = criteria.Copado__Criteria__c.replace(criteria.Copado__Node__c + '.' + criteria.Copado__Field__c, criteria.Copado__Node__c + '.' + newField);
+                // change field and criteria fields
+                Copado__Compliance_Rule_Criteria__c updatedCriteria = new Copado__Compliance_Rule_Criteria__c(
+                    Id = criteria.Id,
+                    Copado__Field__c = newField,
+                    Copado__Criteria__c = newCriteria
+                );
+                updatedCriterias.add(updatedCriteria);
+            }
+        }
+    }
+}
+
+// perform v2 changes
+void applyChangesV2(){
+    for(Copado__Compliance_Rule_Criteria__c criteria : [SELECT Id, Copado__Criteria__c, Copado__Field__c, Copado__Node__c, Copado__Compliance_Rule__c, Copado__Compliance_Rule__r.Copado__Metadata_Type__c FROM Copado__Compliance_Rule_Criteria__c]){
+        replaceField(criteria);
+    }
+    update updatedCriterias;
+    update updatedRules;
+}
+
+// call
+applyChangesV2();
