@@ -1,0 +1,143 @@
+// script version of metadatahandler
+String VALUE_FIELD_VALUE = 'value';
+
+// this replaces the Node__c with the value from the Field__c and puts a default value in Field__c matching Metadata_Type__c
+// case insensitive match
+List<String> NODES_TO_REMOVE = new List<String>{ 
+        'Certificate'.toLowerCase(),
+        'CspTrustedSite'.toLowerCase(),
+        'NamedCredential'.toLowerCase(),
+        'SamlSsoConfig'.toLowerCase()
+    };
+// this mark as invalid matching Metadata_Type__c and Node__c
+Map<String, List<String>> NODES_TO_DEPRECATE = new Map<String, List<String>>{
+    'Profile' => new List<String>{
+        'fieldLevelSecurities'
+    },
+    'SharingRules' => new List<String>{
+        'ownerRules'
+    },
+    'CustomObject' => new List<String>{
+        'namedFilter'
+    },
+    'MobileSettings' => new List<String>{
+        'chatterMobile'
+    }
+};
+// this replaces Node__c with the corresponding value matching Metadata_Type__c and Node__c
+Map<String, Map<String, String>> NODES_TO_REPLACE = new Map<String, Map<String, String>>{
+    'Profile' => new Map<String, String>{
+        'applicationVisibility' => 'applicationVisibilities',
+        'categoryGroupVisibility' => 'categoryGroupVisibilities',
+        'classAccess' => 'classAccesses',
+        'customPermission' => 'customPermissions',
+        'externalDataSourceAccess' => 'externalDataSourceAccesses',
+        'fieldPermission' => 'fieldPermissions',
+        'layoutAssignment' => 'layoutAssignments',
+        'objectPermission' => 'objectPermissions',
+        'pageAccess' => 'pageAccesses',
+        'profileActionOverride' => 'profileActionOverrides',
+        'recordTypeVisibility' => 'recordTypeVisibilities',
+        'TabVisibility' => 'tabVisibilities',
+        'userPermission' => 'userPermissions'
+    },
+    'CustomObject' => new Map<String, String>{
+        'customSettingsVisibility' => 'visibility',
+        'customField' => 'fields'
+    },
+    'Network' => new Map<String, String>{
+        'NetworkBranding' => 'branding',
+        'enablePrivateMessage' => 'enablePrivateMessages'
+    },
+    'PermissionSet' => new Map<String, String>{
+        'applicationVisibility' => 'applicationVisibilities',
+        'classAccess' => 'classAccesses',
+        'customPermission' => 'customPermissions',
+        'externalDataSourceAccess' => 'externalDataSourceAccesses',
+        'fieldPermission' => 'fieldPermissions',
+        'objectPermission' => 'objectPermissions',
+        'pageAccess' => 'pageAccesses',
+        'recordTypeVisibility' => 'recordTypeVisibilities',
+        'tabSetting' => 'tabSettings',
+        'userLicense' => 'license',
+        'userPermission' => 'userPermissions'
+    },
+    'AddressSettings' => new Map<String, String>{
+        'country' => 'countriesAndStates'
+    }
+};
+
+List<Copado__Compliance_Rule_Criteria__c> updatedCriterias = new List<Copado__Compliance_Rule_Criteria__c>();
+List<Copado__Compliance_Rule__c> updatedRules = new List<Copado__Compliance_Rule__c>();
+
+// fix plurals/singulars (Node__c)
+// search rules by Metadata_Type__c and check if the Node__c needs to be replaced
+void replaceNode(Copado__Compliance_Rule_Criteria__c criteria){
+    String metadataType = criteria.Copado__Compliance_Rule__r.Copado__Metadata_Type__c;
+    if(NODES_TO_REPLACE.containsKey(metadataType)){
+        Map<String, String> replacements = NODES_TO_REPLACE.get(metadataType);
+        if(replacements.containsKey(criteria.Copado__Node__c)){
+            String newNode = replacements.get(criteria.Copado__Node__c);
+            String newCriteria = criteria.Copado__Criteria__c.replace(criteria.Copado__Node__c, newNode);
+            // change node and criteria fields
+            Copado__Compliance_Rule_Criteria__c updatedCriteria = new Copado__Compliance_Rule_Criteria__c(
+                Id = criteria.Id,
+                Copado__Node__c = newNode,
+                Copado__Criteria__c = newCriteria
+            );
+            updatedCriterias.add(updatedCriteria);
+        }
+    }
+}
+
+// fix different level (Node__c and Field__c)
+// search rules by Metadata_Type__c and check if the Node__c needs to be removed (equal to Metadata_Type__c)
+void removeNodeByField(Copado__Compliance_Rule_Criteria__c criteria){
+    String metadataType = criteria.Copado__Compliance_Rule__r.Copado__Metadata_Type__c;
+    if(NODES_TO_REMOVE.contains(metadataType.toLowerCase())){
+        if(NODES_TO_REMOVE.contains(criteria.Copado__Node__c.toLowerCase())){
+            String newNode = criteria.Copado__Field__c;
+            String newField = VALUE_FIELD_VALUE;
+            String newCriteria = criteria.Copado__Criteria__c.replace(criteria.Copado__Node__c + '.' + criteria.Copado__Field__c, newNode + '.' + newField);
+            // change node, field and criteria fields
+            Copado__Compliance_Rule_Criteria__c updatedCriteria = new Copado__Compliance_Rule_Criteria__c(
+                Id = criteria.Id,
+                Copado__Node__c = newNode,
+                Copado__Field__c = newField,
+                Copado__Criteria__c = newCriteria
+            );
+            updatedCriterias.add(updatedCriteria);
+        }
+    }
+}
+
+// deprecated (Node__c)
+// search rules by Metadata_Type__c and check if the Node__c needs to be deprecated
+void deprecateNode(Copado__Compliance_Rule_Criteria__c criteria){
+    String metadataType = criteria.Copado__Compliance_Rule__r.Copado__Metadata_Type__c;
+    if(NODES_TO_DEPRECATE.containsKey(metadataType)){
+        List<String> deprecatedNodes = NODES_TO_DEPRECATE.get(metadataType);
+        if(deprecatedNodes.contains(criteria.Copado__Node__c)){
+            // mark rule as invalid
+            Copado__Compliance_Rule__c updatedRule = new Copado__Compliance_Rule__c(
+                Id = criteria.Copado__Compliance_Rule__c,
+                Copado__Is_Valid__c = false
+            );
+            updatedRules.add(updatedRule);
+        }
+    }
+}
+
+// perform v1 changes
+void applyChangesV1(){
+    for(Copado__Compliance_Rule_Criteria__c criteria : [SELECT Id, Copado__Criteria__c, Copado__Field__c, Copado__Node__c, Copado__Compliance_Rule__c, Copado__Compliance_Rule__r.Copado__Metadata_Type__c FROM Copado__Compliance_Rule_Criteria__c]){
+        deprecateNode(criteria);
+        removeNodeByField(criteria);
+        replaceNode(criteria);
+    }
+    update updatedCriterias;
+    update updatedRules;
+}
+
+// call
+applyChangesV1();
